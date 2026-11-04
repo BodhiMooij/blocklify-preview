@@ -1,6 +1,6 @@
 {
     "name": "@blocklify/preview",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "description": "Blocklify frontend SDK: Content API client and live-preview React helpers for theme blocks.",
     "license": "MIT",
     "type": "module",
@@ -52,6 +52,11 @@
         "react-dom": {
             "optional": false
         }
+    },
+    "dependencies": {
+        "@dnd-kit/core": "^6.3.1",
+        "@dnd-kit/sortable": "^10.0.0",
+        "@dnd-kit/utilities": "^3.2.2"
     },
     "devDependencies": {
         "@types/react": "19.2.14",

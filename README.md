@@ -72,3 +72,20 @@ const blockMap = createStarterBlockMap({
 ```
 
 Use `blockMap` with `BlocklifyPreview` on `/preview`, and `BlocklifyEntryView` for the public page.
+
+## Live preview
+
+`BlocklifyPreview` listens for draft content from the Blocklify editor. In that iframe, each block gets a dashed outline. Clicking a block focuses it in the editor. A drag handle reorders body blocks and nested `columns` / `items` cells, and the editor saves that order.
+
+Spread `BlocklifyEditable` on the root element of each block component. For a columns or page block, call `renderNestedBlocks` when it is passed so the cells can be reordered:
+
+```tsx
+export function Columns({ block, BlocklifyEditable = {}, blockPath = [], renderNestedBlocks }: BlocklifyBlockProps) {
+  const items = Array.isArray(block.columns) ? block.columns : [];
+  return (
+    <section {...BlocklifyEditable}>
+      {renderNestedBlocks ? renderNestedBlocks(items, blockPath, "columns") : null}
+    </section>
+  );
+}
+```

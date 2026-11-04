@@ -26,13 +26,18 @@ export {
     BLOCKLIFY_PREVIEW_STYLES,
     BLOCKLIFY_SCROLL_TO_BLOCK,
     getDataBlokC,
+    isPreviewEditable,
     PREVIEW_EDITABLE_CSS,
     useBlocklifyPreview,
     type BlocklifyBlock,
     type BlocklifyBlockProps,
     type BlocklifyPreviewProps,
     type BlockMap,
+    type BlockPath,
+    type BlockPathSegment,
+    type BlockReorderPayload,
     type DataBlokCPayload,
+    type RenderNestedBlocks,
 } from "./preview.js";
 
 export { default } from "./preview.js";
