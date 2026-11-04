@@ -12,7 +12,8 @@ export const PREVIEW_EDITABLE_CSS = `
 [data-blok-uid] {
     cursor: pointer;
     outline: 1px dashed color-mix(in srgb, var(--primary-800, #7a9618) 56%, transparent);
-    outline-offset: 0;
+    /* Inset so adjacent blocks don't share the same outline edge. */
+    outline-offset: -1px;
     transition: outline-color 0.15s, box-shadow 0.2s ease;
 }
 [data-blocklify-iframe-editable]:hover,
@@ -56,6 +57,9 @@ export const PREVIEW_EDITABLE_CSS = `
     position: relative;
     min-width: 0;
     width: 100%;
+}
+.blocklify-sortable-row:not(.blocklify-sortable-row--horizontal) {
+    margin-bottom: 8px;
 }
 .blocklify-sortable-row--dragging {
     opacity: 0.5;
