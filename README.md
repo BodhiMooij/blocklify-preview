@@ -2,6 +2,13 @@
 
 Frontend SDK for [Blocklify](https://www.blocklify.app): Content API client, live preview, and starter blocks for a new website.
 
+## Release
+
+1. Bump `version` in `package.json` on `main`.
+2. Tag the release: `git tag v0.2.3 && git push origin main --tags`.
+3. GitHub Actions `publish.yml` publishes to npm (configure an [npm Trusted Publisher](https://docs.npmjs.com/trusted-publishers/) for this repo + workflow file `publish.yml`).
+4. `sync-blocklify.yml` opens a PR on [blocklify](https://github.com/BodhiMooij/blocklify) to bump the `packages/preview` submodule (secret: `BLOCKLIFY_SYNC_TOKEN`).
+
 ## Install
 
 ```bash

@@ -17,7 +17,7 @@ import {
 } from "@dnd-kit/core";
 import {
     SortableContext,
-    horizontalListSortingStrategy,
+    rectSortingStrategy,
     useSortable,
     verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -58,7 +58,9 @@ const restrictToHorizontalAxis: Modifier = ({ transform }) => ({
 });
 
 function getSortableStrategy(fieldName: string) {
-    return isGridSortableField(fieldName) ? horizontalListSortingStrategy : verticalListSortingStrategy;
+    // CSS grid columns/items need rect-based deltas so siblings slide left/right
+    // (and wrap) instead of the 1D horizontal list heuristic.
+    return isGridSortableField(fieldName) ? rectSortingStrategy : verticalListSortingStrategy;
 }
 
 /**
@@ -184,9 +186,12 @@ function PreviewSortableBlock({
             id: sortableId,
             data: { path: blockPath, block },
         });
-    const lockedTransform = transform && lockHorizontal ? { ...transform, y: 0 } : transform;
-    const style = lockedTransform
-        ? { transform: CSS.Transform.toString(lockedTransform), transition }
+    // Translate only — rectSortingStrategy also returns scale, which distorts grid cells.
+    const style = transform
+        ? {
+              transform: CSS.Translate.toString(transform),
+              transition,
+          }
         : undefined;
     const isContainer = isNestedSortableContainer(block.type);
 

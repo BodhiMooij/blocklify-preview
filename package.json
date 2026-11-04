@@ -1,6 +1,6 @@
 {
     "name": "@blocklify/preview",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "description": "Blocklify frontend SDK: Content API client and live-preview React helpers for theme blocks.",
     "license": "MIT",
     "type": "module",
@@ -39,6 +39,7 @@
     },
     "scripts": {
         "build": "tsc -p tsconfig.json",
+        "test": "bun test",
         "prepublishOnly": "bun run build"
     },
     "peerDependencies": {

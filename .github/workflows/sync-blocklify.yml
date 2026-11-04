@@ -1,0 +1,93 @@
+name: Sync Blocklify submodule
+
+# After main moves, open (or update) a PR on BodhiMooij/blocklify that bumps
+# packages/preview to this commit so the app workspace stays in sync.
+#
+# Secret required: BLOCKLIFY_SYNC_TOKEN — PAT (or fine-grained token) with
+# contents:write + pull_requests:write on BodhiMooij/blocklify.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check sync token
+        id: token
+        env:
+          TOKEN: ${{ secrets.BLOCKLIFY_SYNC_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "BLOCKLIFY_SYNC_TOKEN is not set; skipping submodule sync PR."
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve preview SHA
+        if: steps.token.outputs.present == 'true'
+        id: preview
+        run: echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Blocklify
+        if: steps.token.outputs.present == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: BodhiMooij/blocklify
+          token: ${{ secrets.BLOCKLIFY_SYNC_TOKEN }}
+          submodules: true
+          path: blocklify
+
+      - name: Bump packages/preview submodule
+        if: steps.token.outputs.present == 'true'
+        id: bump
+        working-directory: blocklify
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C packages/preview fetch --depth 1 origin "${{ steps.preview.outputs.sha }}"
+          git -C packages/preview checkout "${{ steps.preview.outputs.sha }}"
+          git add packages/preview
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Submodule already points at ${{ steps.preview.outputs.sha }}"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update sync PR
+        if: steps.token.outputs.present == 'true' && steps.bump.outputs.changed == 'true'
+        working-directory: blocklify
+        env:
+          GH_TOKEN: ${{ secrets.BLOCKLIFY_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          BRANCH="chore/preview-submodule-${{ steps.preview.outputs.sha }}"
+          SHORT="$(echo "${{ steps.preview.outputs.sha }}" | cut -c1-7)"
+          git checkout -B "$BRANCH"
+          git commit -m "Bump @blocklify/preview submodule to ${SHORT}."
+          git push -u origin "$BRANCH" --force
+          EXISTING="$(gh pr list --head "$BRANCH" --json number --jq '.[0].number // empty')"
+          BODY=$(cat <<EOF
+          ## Summary
+          - Point \`packages/preview\` at [BodhiMooij/blocklify-preview@${SHORT}](https://github.com/BodhiMooij/blocklify-preview/commit/${{ steps.preview.outputs.sha }})
+
+          ## Test plan
+          - [ ] \`bun install\`
+          - [ ] \`bun run build\`
+          - [ ] Live preview column reorder still works
+          EOF
+          )
+          if [ -n "$EXISTING" ]; then
+            gh pr edit "$EXISTING" --title "Bump @blocklify/preview to ${SHORT}" --body "$BODY"
+            echo "Updated PR #$EXISTING"
+          else
+            gh pr create --title "Bump @blocklify/preview to ${SHORT}" --body "$BODY"
+          fi

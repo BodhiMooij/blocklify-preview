@@ -74,8 +74,19 @@ export const PREVIEW_EDITABLE_CSS = `
 .blocklify-sortable-drop-zone {
     min-height: 0;
 }
+/*
+ * Nested columns/items sit inside the theme's CSS grid. Use subgrid so children
+ * keep the parent column tracks while this drop zone still has a real box for
+ * dnd-kit measuring (display: contents broke horizontal reorder transforms).
+ */
 .blocklify-sortable-drop-zone--grid {
-    display: contents;
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    gap: inherit;
+    width: 100%;
+    min-width: 0;
+    align-items: stretch;
 }
 .blocklify-sortable-row__content {
     position: relative;
