@@ -8,6 +8,30 @@ export const PREVIEW_FOCUS_BLINK_MS = 400;
  * The admin sends this string to the iframe (`blocklify-preview-styles`). Themes do not import a CSS file.
  */
 export const PREVIEW_EDITABLE_CSS = `
+/*
+ * Sticky/fixed site chrome pins to the short iframe viewport and hides content
+ * while scrolling. Flatten those positions in live preview only (this CSS is
+ * injected into the iframe). Blocklify drag UI uses absolute, so it is unaffected.
+ */
+html body :is(
+    .sticky,
+    .fixed,
+    [class~="sticky"],
+    [class~="fixed"],
+    [class*=":sticky"],
+    [class*=":fixed"],
+    [style*="position: sticky"],
+    [style*="position:sticky"],
+    [style*="position: fixed"],
+    [style*="position:fixed"]
+) {
+    position: static !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    inset: auto !important;
+}
 [data-blocklify-iframe-editable],
 [data-blok-uid] {
     cursor: pointer;
