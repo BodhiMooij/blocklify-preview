@@ -6,14 +6,16 @@ import {
     DndContext,
     DragOverlay,
     PointerSensor,
+    pointerWithin,
+    useDndContext,
     useDroppable,
     useSensor,
     useSensors,
+    type Collision,
     type CollisionDetection,
     type DragEndEvent,
     type DragOverEvent,
     type DragStartEvent,
-    type Modifier,
 } from "@dnd-kit/core";
 import {
     SortableContext,
@@ -52,10 +54,31 @@ export type RenderSortableBlock = (args: {
 
 const BLOCKLIFY_BLOCK_REORDER = "blocklify-block-reorder";
 
-const restrictToHorizontalAxis: Modifier = ({ transform }) => ({
-    ...transform,
-    y: 0,
-});
+const SORT_TRANSITION = "transform 200ms ease";
+const SORT_SNAP_STYLE_ID = "blocklify-sort-snap";
+
+/**
+ * The row is already translated into its slot while dragging. On release the
+ * list moves in the DOM and that offset must disappear immediately. Clearing
+ * it in the same frame as a 200ms transition plays the offset back as a fall.
+ * Force `transition: none` and flush layout before React commits the reorder.
+ */
+function freezeSortableMotion() {
+    if (typeof document === "undefined") return;
+    const style = document.getElementById(SORT_SNAP_STYLE_ID) ?? document.createElement("style");
+    style.id = SORT_SNAP_STYLE_ID;
+    style.textContent = ".blocklify-sortable-row { transition: none !important; }";
+    document.head.appendChild(style);
+    document.querySelectorAll<HTMLElement>(".blocklify-sortable-row").forEach((row) => {
+        row.style.transition = "none";
+    });
+    void document.body.offsetHeight;
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            style.remove();
+        });
+    });
+}
 
 function getSortableStrategy(fieldName: string) {
     // CSS grid columns/items need rect-based deltas so siblings slide left/right
@@ -63,32 +86,40 @@ function getSortableStrategy(fieldName: string) {
     return isGridSortableField(fieldName) ? rectSortingStrategy : verticalListSortingStrategy;
 }
 
+function isListDropZone(id: Collision["id"]): boolean {
+    return String(id).endsWith(":drop-zone");
+}
+
 /**
  * Column children only collide with siblings. Body blocks ignore nested cells
  * so they reorder around a columns block instead of dropping into it.
+ *
+ * The pointer decides the target. The list drop zone covers every sibling, and
+ * its center ties with the middle item, so closest-center on the small drag
+ * chip skipped the shift when moving left or up.
  */
 const previewCollisionDetection: CollisionDetection = (args) => {
-    const collisions = closestCenter(args);
+    const pointerHits = pointerWithin(args);
+    const collisions = pointerHits.length > 0 ? pointerHits : closestCenter(args);
     const activePath = args.active.data.current?.path as BlockPath | undefined;
 
-    if (activePath && isGridSortableField(getBlocksFieldNameFromPath(activePath))) {
-        const sourceListKey = getBlocksListKey(activePath);
-        return collisions.filter((collision) => {
-            const container = args.droppableContainers.find((entry) => entry.id === collision.id);
-            const path = container?.data.current?.path as BlockPath | undefined;
-            if (!path?.length) return false;
-            return getBlocksListKey(path) === sourceListKey;
-        });
-    }
-
-    return collisions.filter((collision) => {
+    const allowed = collisions.filter((collision) => {
         const container = args.droppableContainers.find((entry) => entry.id === collision.id);
         const path = container?.data.current?.path as BlockPath | undefined;
+
+        if (activePath && isGridSortableField(getBlocksFieldNameFromPath(activePath))) {
+            if (!path?.length) return false;
+            return getBlocksListKey(path) === getBlocksListKey(activePath);
+        }
+
         if (!path?.length) return true;
         if (isNestedGridDropPath(path)) return false;
         if (activePath && isPathInsideBlock(path, activePath)) return false;
         return true;
     });
+
+    const itemHits = allowed.filter((collision) => !isListDropZone(collision.id));
+    return itemHits.length > 0 ? itemHits : allowed;
 };
 
 function emitBlockReorder(payload: BlockReorderPayload) {
@@ -185,14 +216,18 @@ function PreviewSortableBlock({
         useSortable({
             id: sortableId,
             data: { path: blockPath, block },
+            // The shift while dragging is enough. The post-drop FLIP measures the
+            // pre-drop rect and plays it back as a fall into the new slot.
+            animateLayoutChanges: () => false,
         });
+    const dragActive = useDndContext().active != null;
     // Translate only — rectSortingStrategy also returns scale, which distorts grid cells.
-    const style = transform
-        ? {
-              transform: CSS.Translate.toString(transform),
-              transition,
-          }
-        : undefined;
+    // After release, drop the offset immediately. freezeSortableMotion() has already
+    // flushed transition:none, so this clear does not ease the block into place.
+    const style = {
+        transform: dragActive && transform ? CSS.Translate.toString(transform) : undefined,
+        transition: dragActive ? (transition ?? SORT_TRANSITION) : "none",
+    };
     const isContainer = isNestedSortableContainer(block.type);
 
     return (
@@ -256,32 +291,47 @@ function renderBlockList(
         );
     }
 
-    const sortableItems = blocks
-        .map((block, index) => ({ block, path: toBlockPathSegment(parentPath, fieldName, index) }))
-        .filter(({ block }) => !isVirtualPreviewBlock(block))
-        .map(({ block, path }) => getSortableId(block, path));
-    const gridLayout = isGridSortableField(fieldName);
+    return (
+        <SortableBlockList
+            blocks={blocks}
+            parentPath={parentPath}
+            fieldName={fieldName}
+            renderBlock={renderBlock}
+            renderNestedBlocks={renderNestedBlocks}
+        />
+    );
+}
 
-    const renderedBlocks = blocks.map((block, index) => {
-        const blockPath = toBlockPathSegment(parentPath, fieldName, index);
-        const key = block._uid ?? `${pathKey}:${fieldName}:${index}`;
-        if (isVirtualPreviewBlock(block)) {
-            return (
-                <div key={key}>{renderBlock({ block, blockPath, blockIndex: index, renderNestedBlocks })}</div>
-            );
-        }
-        return (
-            <PreviewSortableBlock
-                key={key}
-                block={block}
-                blockPath={blockPath}
-                blockIndex={index}
-                lockHorizontal={gridLayout}
-                renderBlock={renderBlock}
-                renderNestedBlocks={renderNestedBlocks}
-            />
-        );
-    });
+function SortableBlockList({
+    blocks,
+    parentPath,
+    fieldName,
+    renderBlock,
+    renderNestedBlocks,
+}: {
+    blocks: BlocklifyBlock[];
+    parentPath: BlockPath;
+    fieldName: string;
+    renderBlock: RenderSortableBlock;
+    renderNestedBlocks: RenderNestedBlocks;
+}) {
+    const pathKey = getPathKey(parentPath);
+    const parentPathRef = useRef(parentPath);
+    parentPathRef.current = parentPath;
+    // Stable ids while the block list is unchanged. A fresh array on every pointer
+    // move makes dnd-kit drop the 200ms transition on the frame the shift starts.
+    const sortableItems = useMemo(
+        () =>
+            blocks
+                .map((block, index) => ({
+                    block,
+                    path: toBlockPathSegment(parentPathRef.current, fieldName, index),
+                }))
+                .filter(({ block }) => !isVirtualPreviewBlock(block))
+                .map(({ block, path }) => getSortableId(block, path)),
+        [blocks, fieldName, pathKey]
+    );
+    const gridLayout = isGridSortableField(fieldName);
 
     return (
         <SortableListDropZone
@@ -295,7 +345,28 @@ function renderBlockList(
                 items={sortableItems}
                 strategy={getSortableStrategy(fieldName)}
             >
-                {renderedBlocks}
+                {blocks.map((block, index) => {
+                    const blockPath = toBlockPathSegment(parentPath, fieldName, index);
+                    const key = block._uid ?? `${pathKey}:${fieldName}:${index}`;
+                    if (isVirtualPreviewBlock(block)) {
+                        return (
+                            <div key={key}>
+                                {renderBlock({ block, blockPath, blockIndex: index, renderNestedBlocks })}
+                            </div>
+                        );
+                    }
+                    return (
+                        <PreviewSortableBlock
+                            key={key}
+                            block={block}
+                            blockPath={blockPath}
+                            blockIndex={index}
+                            lockHorizontal={gridLayout}
+                            renderBlock={renderBlock}
+                            renderNestedBlocks={renderNestedBlocks}
+                        />
+                    );
+                })}
             </SortableContext>
         </SortableListDropZone>
     );
@@ -350,7 +421,6 @@ export function PreviewSortableTree({
     );
     const lastCrossContainerMove = useRef<string | null>(null);
     const [activeBlock, setActiveBlock] = useState<BlocklifyBlock | null>(null);
-    const [lockHorizontal, setLockHorizontal] = useState(false);
 
     const renderNestedBlocks = useCallback<RenderNestedBlocks>(
         function renderNestedBlocks(nestedBlocks, parentPath, nestedFieldName) {
@@ -368,14 +438,12 @@ export function PreviewSortableTree({
 
     const handleDragStart = useCallback((event: DragStartEvent) => {
         const block = event.active.data.current?.block as BlocklifyBlock | undefined;
-        const path = event.active.data.current?.path as BlockPath | undefined;
         setActiveBlock(block ?? null);
-        setLockHorizontal(!!path && isGridSortableField(getBlocksFieldNameFromPath(path)));
     }, []);
 
     const clearActive = useCallback(() => {
+        freezeSortableMotion();
         setActiveBlock(null);
-        setLockHorizontal(false);
     }, []);
 
     const handleDragOver = useCallback(
@@ -432,7 +500,6 @@ export function PreviewSortableTree({
         <DndContext
             sensors={sensors}
             collisionDetection={previewCollisionDetection}
-            modifiers={lockHorizontal ? [restrictToHorizontalAxis] : undefined}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}

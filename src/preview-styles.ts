@@ -57,12 +57,13 @@ export const PREVIEW_EDITABLE_CSS = `
     position: relative;
     min-width: 0;
     width: 100%;
+    transition: transform 200ms ease;
 }
 .blocklify-sortable-row:not(.blocklify-sortable-row--horizontal) {
     margin-bottom: 8px;
 }
 .blocklify-sortable-row--dragging {
-    opacity: 0.5;
+    opacity: 0;
     z-index: 20;
 }
 .blocklify-sortable-row--dragging > .blocklify-sortable-row__content {
